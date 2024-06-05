@@ -1,0 +1,292 @@
+import telebot
+import sqlite3
+from telebot import types
+
+token = '00000000000:000000000000000000000000000000'
+bot = telebot.TeleBot(token)
+
+admin_chat_id = 000000000  # Задайте ID чата администратора
+
+
+# Функции для создания клавиатур
+def generate_group_keyboard_student():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton('МТ')
+    item2 = types.KeyboardButton('МН')
+    item3 = types.KeyboardButton('МП')
+    item4 = types.KeyboardButton('КБ')
+    item5 = types.KeyboardButton('◀️◀️◀️')
+    markup.add(item1, item2, item3, item4, item5)
+    return markup
+
+
+def generate_group_keyboard_teacher():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton('МТ')
+    item2 = types.KeyboardButton('МН')
+    item3 = types.KeyboardButton('МП')
+    item4 = types.KeyboardButton('КБ')
+    markup.add(item1, item2, item3, item4)
+    return markup
+
+
+def generate_curse_keyboard_student():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton('1')
+    item2 = types.KeyboardButton('2')
+    item3 = types.KeyboardButton('3')
+    item4 = types.KeyboardButton('4')
+    item5 = types.KeyboardButton('5')
+    item6 = types.KeyboardButton('◀️◀️◀️')
+    markup.add(item1, item2, item3, item4, item5, item6)
+    return markup
+
+
+def generate_curse_keyboard_teacher():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton('1')
+    item2 = types.KeyboardButton('2')
+    item3 = types.KeyboardButton('3')
+    item4 = types.KeyboardButton('4')
+    item5 = types.KeyboardButton('5')
+    markup.add(item1, item2, item3, item4, item5)
+    return markup
+
+
+def send_subscription_menu_for_student(chat_id):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton('Подписка на уведомления')
+    item2 = types.KeyboardButton('Заказ справки')
+    item3 = types.KeyboardButton('Полезные каналы')
+    markup.add(item1, item2, item3)
+    bot.send_message(chat_id, 'Выберите один вариант', reply_markup=markup)
+
+
+def send_subscription_menu_for_teacher(chat_id):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton('Сделать рассылку')
+    item2 = types.KeyboardButton('Кнопка 2')
+    markup.add(item1, item2)
+    bot.send_message(chat_id, 'Выберите один вариант', reply_markup=markup)
+
+
+# Обработчик команды /start
+@bot.message_handler(commands=['start'])
+def start(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton('Студент')
+    item2 = types.KeyboardButton('Преподаватель')
+    markup.add(item1, item2)
+    bot.send_message(message.chat.id,
+                     'Привет, ' + message.chat.first_name + "! Я бот математического факультета ЧелГУ!",
+                     reply_markup=markup)
+
+    with sqlite3.connect('users.db') as connect:
+        cursor = connect.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS users(
+            id INTEGER PRIMARY KEY,
+            role TEXT, 
+            course TEXT,
+            group_name TEXT
+        )''')
+
+        user_id = message.chat.id
+        # По умолчанию роль пользователя - студент
+        cursor.execute('INSERT OR IGNORE INTO users (id, role) VALUES (?, "student");', (user_id,))
+        connect.commit()
+
+
+# Обработчик текстовых сообщений
+@bot.message_handler(content_types=['text'])
+def bot_message(message):
+    if message.chat.type == 'private':
+        # Получаем роль пользователя из базы данных
+        with sqlite3.connect('users.db') as connect:
+            cursor = connect.cursor()
+            cursor.execute('SELECT role FROM users WHERE id = ?', (message.chat.id,))
+            user_role = cursor.fetchone()
+
+        if message.text == 'Студент':
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            item1 = types.KeyboardButton('Подписка на уведомления')
+            item2 = types.KeyboardButton('Заказ справки')
+            item3 = types.KeyboardButton('Полезные каналы')
+            markup.add(item1, item2, item3)
+            bot.send_message(message.chat.id, 'Выберите один вариант', reply_markup=markup)
+
+            with sqlite3.connect('users.db') as connect:
+                cursor = connect.cursor()
+                user_id = message.chat.id
+                cursor.execute('UPDATE users SET role = "student" WHERE id = ?', (user_id,))
+                connect.commit()
+
+        elif message.text == 'Преподаватель':
+            bot.send_message(message.chat.id, 'Введите код преподавателя', reply_markup=types.ReplyKeyboardRemove())
+            bot.register_next_step_handler(message, check_teacher_code)
+
+        elif message.text == 'Подписка на уведомления':
+            bot.send_message(message.chat.id, 'Выберите ваш курс', reply_markup=generate_curse_keyboard_student())
+
+        elif message.text == 'Полезные каналы':
+            channels_message = (
+                '[Канал с новостями](https://t.me/csu76)\n'
+                '[Канал с расписанием](https://t.me/math_csu_bot)\n'
+                '[Канал столовой](https://t.me/chiefcookcsu)'
+            )
+            bot.send_message(message.chat.id, channels_message, parse_mode='Markdown')
+
+        elif message.text in ['1', '2', '3', '4', '5']:
+            connect = sqlite3.connect('users.db')
+            cursor = connect.cursor()
+            user_id = message.chat.id
+            course = message.text
+            cursor.execute('UPDATE users SET course = ? WHERE id = ?', (course, user_id))
+            connect.commit()
+            bot.send_message(message.chat.id, 'Выберите вашу группу', reply_markup=generate_group_keyboard_student())
+
+        elif message.text in ['МТ', 'МН', 'МП', 'КБ']:
+            connect = sqlite3.connect('users.db')
+            cursor = connect.cursor()
+            user_id = message.chat.id
+            group_name = message.text
+            cursor.execute('UPDATE users SET group_name = ? WHERE id = ?', (group_name, user_id))
+            connect.commit()
+            bot.send_message(message.chat.id, 'Спасибо, информация о вашем курсе и группе добавлена!')
+            send_subscription_menu_for_student(message.chat.id)
+
+        elif message.text == '◀️◀️◀️':
+            send_subscription_menu_for_student(message.chat.id)
+
+        elif message.text == 'Заказ справки':
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            item1 = types.KeyboardButton('Да')
+            item2 = types.KeyboardButton('Нет, нужна другая справка')
+            item3 = types.KeyboardButton('◀️◀️◀️')
+            markup.add(item1, item2, item3)
+            bot.send_message(message.chat.id, 'Вам нужна справка о том, что вы учитесь в ЧелГУ?', reply_markup=markup)
+            bot.register_next_step_handler(message, certificate_step)
+
+        elif user_role == ('teacher',):  # Проверяем, является ли пользователь преподавателем
+            if message.text == 'Сделать рассылку':  # Если выбрано действие "Сделать рассылку"
+                send_notification(message)
+            else:
+                bot.send_message(message.chat.id, 'Извините, я не могу обработать ваш запрос.')
+
+
+# Обработчик кода преподавателя
+def check_teacher_code(message):
+    if message.text.strip() == '12345':  # Код препода
+        bot.send_message(message.chat.id, 'Код преподавателя верный.')
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton('Сделать рассылку')
+        item2 = types.KeyboardButton('Кнопка 2')
+        markup.add(item1, item2)
+        bot.send_message(message.chat.id, 'Вы авторизовались как преподаватель. Выберите действие:',
+                         reply_markup=markup)
+        bot.register_next_step_handler(message, send_notification)
+        # Обновляем роль пользователя в базе данных на "преподаватель"
+        with sqlite3.connect('users.db') as connect:
+            cursor = connect.cursor()
+            user_id = message.chat.id
+            cursor.execute('UPDATE users SET role = "teacher", course = NULL, group_name = NULL WHERE id = ?',
+                           (user_id,))
+            connect.commit()
+    else:
+        bot.send_message(message.chat.id, 'Неверный код преподавателя. Пожалуйста, повторите ввод.')
+        bot.send_message(message.chat.id, 'Введите код преподавателя', reply_markup=types.ReplyKeyboardRemove())
+        bot.register_next_step_handler(message, check_teacher_code)
+
+
+# Функции для рассылки уведомлений
+def send_notification(message):
+    if message.text == 'Кнопка 2':  # Добавлено условие для кнопки 2
+        bot.send_message(message.chat.id, 'Это действие в разработке.')
+        send_subscription_menu_for_teacher(message.chat.id)
+    else:
+        bot.send_message(message.chat.id, "Выберите курс:", reply_markup=generate_curse_keyboard_teacher())
+        bot.register_next_step_handler(message, ask_group_for_notification)
+
+
+def ask_group_for_notification(message):
+    selected_course = message.text
+    bot.send_message(message.chat.id, f"Выберите группу для рассылки на курсе {selected_course}:",
+                     reply_markup=generate_group_keyboard_teacher())
+    bot.register_next_step_handler(message, lambda m: ask_message_for_notification(m, selected_course))
+
+
+def ask_message_for_notification(message, selected_course):
+    selected_group = message.text
+    bot.send_message(message.chat.id, "Введите текст для рассылки:", reply_markup=types.ReplyKeyboardRemove())
+    bot.register_next_step_handler(message, lambda m: send_notification_to_group(m, selected_course, selected_group))
+
+
+def send_notification_to_group(message, selected_course, selected_group):
+    notification_text = message.text
+
+    # Получаем список пользователей с выбранным курсом и группой из базы данных
+    with sqlite3.connect('users.db') as connect:
+        cursor = connect.cursor()
+        cursor.execute('SELECT id FROM users WHERE course = ? AND group_name = ?', (selected_course, selected_group))
+        users = cursor.fetchall()
+
+    # Отправляем уведомление каждому пользователю
+    for user_id in users:
+        try:
+            bot.send_message(user_id[0], notification_text)
+        except Exception as e:
+            print(f"Не удалось отправить уведомление пользователю {user_id[0]}: {str(e)}")
+
+    bot.send_message(message.chat.id,
+                     f"Сообщение успешно отправлено группе {selected_group} на курсе {selected_course}.")
+    send_subscription_menu_for_teacher(message.chat.id)
+    bot.register_next_step_handler(message, send_notification)
+
+
+def certificate_step(message):
+    if message.text == 'Да':
+        bot.send_message(message.chat.id, 'Пожалуйста, введите ваше ФИО.')
+        bot.register_next_step_handler(message, request_certificate_info)
+    elif message.text == 'Нет, нужна другая справка':
+        bot.send_message(message.chat.id, 'Пожалуйста, уточните, какая справка вам нужна.')
+        bot.register_next_step_handler(message, request_other_certificate)
+    elif message.text == '◀️◀️◀️':
+        send_subscription_menu_for_student(message.chat.id)
+    else:
+        bot.send_message(message.chat.id, 'Неверный ввод. Пожалуйста, выберите "Да" или "Нет, нужна другая справка".')
+
+
+def request_certificate_info(message):
+    full_name = message.text
+    bot.send_message(message.chat.id, 'Пожалуйста, введите номер вашей группы.')
+    bot.register_next_step_handler(message, lambda m: process_certificate_request(m, full_name))
+
+
+def process_certificate_request(message, full_name):
+    group_number = message.text
+    purpose = "справка о том, что он учится в ЧелГУ"
+    certificate_request = f"Запрос на справку: студент {full_name} (группа: {group_number}, ID: {message.chat.id}) запрашивает {purpose}."
+    bot.send_message(admin_chat_id, certificate_request)
+    bot.send_message(message.chat.id, 'Ваш запрос на справку отправлен. Ожидайте ответа.')
+
+
+def request_other_certificate(message):
+    certificate_type = message.text
+    bot.send_message(message.chat.id, 'Пожалуйста, введите ваше ФИО.')
+    bot.register_next_step_handler(message, lambda m: request_other_certificate_details(m, certificate_type))
+
+
+def request_other_certificate_details(message, certificate_type):
+    full_name = message.text
+    bot.send_message(message.chat.id, 'Пожалуйста, введите номер вашей группы.')
+    bot.register_next_step_handler(message, lambda m: process_other_certificate_request(m, certificate_type, full_name))
+
+
+def process_other_certificate_request(message, certificate_type, full_name):
+    group_number = message.text
+    certificate_request = f"Запрос на справку: студент {full_name} (группа: {group_number}, ID: {message.chat.id}) запрашивает справку: {certificate_type}."
+    bot.send_message(admin_chat_id, certificate_request)
+    bot.send_message(message.chat.id, 'Ваш запрос на справку отправлен. Ожидайте ответа.')
+
+
+bot.polling()
+
